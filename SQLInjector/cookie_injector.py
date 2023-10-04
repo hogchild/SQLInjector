@@ -155,13 +155,15 @@ def thread_pool_executor(max_threads, injector, passwd_length, start_time):
 @click.command(
     help="This app injects a cookie, sends the crafted request, "
          "and checks the response from the page content.\n"
-         "It needs a configuration file, you can edit manually, "
-         "the 'config/cookie_injector.json' in the current working directory, "
-         "or you can run the setup utility."
+         "It needs a JSON configuration file. You can edit this manually, "
+         "at the path: 'config/cookie_injector.json'. The setup utility will "
+         "run automatically, to create one, when launching cookie_injector.py "
+         "without a configuration file in the config folder. Alternatively you "
+         "can run it with the '-s' option."
 )
 @click.option(
     "-u", "--set-url", "set_url",
-    help="Edit target URL.",
+    help="Specify target URL instead of the one in config file.",
     required=False,
     type=str
 )
