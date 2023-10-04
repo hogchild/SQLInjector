@@ -4,8 +4,25 @@ At the moment the app is able to test for cookie injection vulnerabilities. It c
 to inject, the name of the cookie to inject, a confirmation string to be matched on the response content, chars-set to
 use for brute forcing, password length, and max number of concurrent thread to run.
 
-### Usage:
+##### Testing
+This code is a POC, and has been written to solve PortSwigger's lab: [Blind SQL injection with conditional responses](https://portswigger.net/web-security/sql-injection/blind/lab-conditional-responses).
+This lab can be used to test the code, or any other web app, where a cookie injection vulnerability exists. The app 
+will inject the specified code in the cookie we specify by name, and submit the conditional statements to the web app,
+checking if our chosen string can be matched on the response content.
 
+##### The injection code
+The code that can be injected by default is:
+   ```sql
+   ' anD (SELECT SUBSTRING(password,{char_numb},1) FROM users WHERE username = 'administrator') = '{character}'--`
+   ```
+The `{char_numb}` and the `{character}` tags are just placeholder. The Brute Forcer will replace the `{char_numb}`
+with the character position (index) of the password string. The `{character}` tag will be replaced with a character
+taken from the specified char-set.  
+  
+By changing these two values in the injected code, the Cookie Injector app will try to recover the administrator's
+password.
+
+### Usage:
 1. Clone the repository
 
    ```zsh
