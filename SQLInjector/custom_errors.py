@@ -5,3 +5,10 @@
 class CookieInjectorGetResponseError(Exception):
     def __init__(self, message="Error communicating with server."):
         super().__init__(message)
+
+
+import http.server
+
+a = http.server
+
+a.HTTPServer

@@ -70,4 +70,31 @@ password.
 ```
 
 ### Demo
-![Demo gif](data/gifmaker_me.gif)
+![Demo gif](data/demo.gif)
+
+---
+
+### Directory Structure
+
+- SQLInjector
+  - Config
+    - cookie_ingector.json
+  - Data
+    - input
+    - output
+    - demo.gif
+  - docs
+  - SQLInjector
+    - \_\_init__.py
+    - brute_forcer.py
+    - cookie_injector.py
+    - cookie_injector_core.py
+    - cookie_injector_setup.py
+    - custom_errors.py
+  - tests
+    - \_\_init__.py
+    - test_cookie_injector_core.py
+    - test_cookie_injector_setup.py
+  - \_\_init__.py
+  - README.md
+  - requirements.txt
