@@ -68,3 +68,6 @@ password.
    "max_threads": 20
 }
 ```
+
+### Demo
+![Demo gif](data/gifmaker_me.gif)
