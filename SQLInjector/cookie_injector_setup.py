@@ -285,7 +285,7 @@ class CookieInjSetup:
                 self.c.print(self.config_file_content)
             else:
                 message = "Quit or start over"
-                quit = self.p.ask(
+                quit_app = self.p.ask(
                     message,
                     console=self.c,
                     default="quit",
@@ -293,7 +293,7 @@ class CookieInjSetup:
                     show_default=True,
                     show_choices=True
                 )
-                if quit == "quit":
+                if quit_app == "quit":
                     sys.exit("Bye.")
                 else:
                     self.parse_options()
@@ -314,7 +314,7 @@ class CookieInjSetup:
                 if overwrite == "n":
                     self.c.print("e", self.config_file_path)
                     with open(self.config_file_path, "r") as config_file:
-                        original_config_file = json.loads(config_file.read())
+                        # original_config_file = json.loads(config_file.read())
                         self.c.print(Markdown("# Original Config File"))
                         self.read_config_file()
                         self.c.print(self.config_file_content)
