@@ -108,6 +108,7 @@ class StartInjector:
         self.setup_utility = setup_utility
         self.config = dict()
         self.injector = None
+        self.setup = None
 
     def load_config(self) -> dict:
         try:
@@ -139,7 +140,8 @@ class StartInjector:
 
     def run_cookie_injector_setup(self) -> None:
         from SQLInjector import cookie_injector_setup
-        cookie_injector_setup.main()
+        self.setup = cookie_injector_setup.main
+        self.setup()
 
     def thread_pool_executor(self, max_threads: int, passwd_length: int) -> None:
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
@@ -183,14 +185,14 @@ class StartInjector:
                 output_file.write(message + "\n")
             self.c.print(f"Output file '{self.out_file}' created successfully.")
 
-    def process_runtime(self):
+    def process_execution_time(self):
         end_time = datetime.datetime.now()
         run_time = end_time - self.start_time
         return run_time, end_time
 
     def process_passwd_data(self) -> None:
         clear_text_passwd = self.process_char_dict()
-        run_time, end_time = self.process_runtime()
+        run_time, end_time = self.process_execution_time()
         if len(clear_text_passwd) >= 1:
             self.passwd_was_found(clear_text_passwd)
         else:
