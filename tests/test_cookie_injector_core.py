@@ -41,7 +41,7 @@ class TestCookieInjectorCore(unittest.TestCase):
             "TrackingID"
         )
         cookie_injector.get_response()
-        cookie_injector.extract_cookies(print_cookies=True)
+        cookie_injector.extract_cookies(print_cookies=False)
         self.assertIsNotNone(cookie_injector.cookies)
 
     @patch("rich.console.Console.print")

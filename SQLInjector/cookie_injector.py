@@ -1,5 +1,6 @@
 #!/usr/bin/env python3.12
 # cookie_injector.py ver 1.1
+
 import datetime
 import http.client
 import json
@@ -32,12 +33,11 @@ from SQLInjector.cookie_injector_core import CookieInjector
 # threads = 20
 # queues = [Queue() for queue in range(threads)]
 
-c = Console()
-
 
 class Injector:
     def __init__(self, target_url, confirm_string, cookie_name, passwd_length: int, char_set, inject_code,
                  max_threads: int):
+        self.c = Console()
         self.url = target_url
         self.confirm_string = confirm_string
         self.cookie_name = cookie_name
@@ -56,15 +56,15 @@ class Injector:
         try:
             response = requests.head(self.url)
             if response.status_code == 200:
-                c.print(f"The URL is responding", style="green")
-            c.print(
+                self.c.print(f"The URL is responding", style="green")
+            self.c.print(
                 f"Status code {response.status_code} -> {self.status_code_to_description[response.status_code]}.\n"
                 f"Press CTRL+C to abort."
             )
         except requests.RequestException as e:
-            c.print(f"Error: {e}")
+            self.c.print(f"Error: {e}")
             print()
-            c.print(f"The URL {self.url} is not responding.", style="red")
+            self.c.print(f"The URL {self.url} is not responding.", style="red")
             sys.exit(1)
 
     def brute_forcer(self):
@@ -83,7 +83,7 @@ class Injector:
                 now = datetime.datetime.now()
                 elapsed_time = now - start_time
                 with Live():
-                    c.print(
+                    self.c.print(
                         Panel(
                             f"{self.found_characters}\n"
                             f"Brute forced positions {len(self.discard_seq_num)} --> {self.discard_seq_num}\n"
@@ -99,6 +99,7 @@ class Injector:
 
 class StartInjector:
     def __init__(self, set_url, config_file_path, out_file, setup_utility):
+        self.c = Console()
         self.futures = []
         self.start_time = None
         self.set_url = set_url
@@ -131,10 +132,10 @@ class StartInjector:
         config_file_content = self.load_config()
         print()
         if not self.set_url:
-            c.print(Markdown(f"**Using data from configuration file...**"))
+            self.c.print(Markdown(f"**Using data from configuration file...**"))
             print()
-        c.print(Markdown(f"# Configuration File Content"))
-        c.print(config_file_content, style="black")
+        self.c.print(Markdown(f"# Configuration File Content"))
+        self.c.print(config_file_content, style="black")
 
     def run_cookie_injector_setup(self) -> None:
         from SQLInjector import cookie_injector_setup
@@ -155,6 +156,7 @@ class StartInjector:
                         )
                         self.futures.append(future)
                     else:
+                        self.kill_all_threads()
                         break
 
     def process_char_dict(self) -> str:
@@ -167,19 +169,19 @@ class StartInjector:
 
     def passwd_was_found(self, clear_text_passwd):
         message = f"Password successfully brute forced: {clear_text_passwd}"
-        c.print(message, style="green")
+        self.c.print(message, style="green")
         if self.out_file:
             with open(self.out_file, "w", encoding="utf-8") as output_file:
                 output_file.write(message + "\n")
-            c.print(f"Output file '{self.out_file}' created successfully.")
+            self.c.print(f"Output file '{self.out_file}' created successfully.")
 
     def passwd_was_not_found(self):
         message = f"No password recovered."
-        c.print(message, style="red")
+        self.c.print(message, style="red")
         if self.out_file:
             with open(self.out_file, "w", encoding="utf-8") as output_file:
                 output_file.write(message + "\n")
-            c.print(f"Output file '{self.out_file}' created successfully.")
+            self.c.print(f"Output file '{self.out_file}' created successfully.")
 
     def process_runtime(self):
         end_time = datetime.datetime.now()
@@ -193,7 +195,7 @@ class StartInjector:
             self.passwd_was_found(clear_text_passwd)
         else:
             self.passwd_was_not_found()
-        c.print(f"Completed in {run_time} seconds at {end_time}.", style="blue")
+        self.c.print(f"Completed in {run_time} seconds at {end_time}.", style="blue")
 
     def process_options(self):
         if self.setup_utility:
@@ -202,7 +204,7 @@ class StartInjector:
         if self.set_url:
             self.config["target_url"] = self.set_url
             print()
-            c.print(Markdown(f"\n**Using custom URL...**\n- Target URL: {self.config.get("target_url")}"))
+            self.c.print(Markdown(f"\n**Using custom URL...**\n- Target URL: {self.config.get("target_url")}"))
         return self.initialize_data()
 
     def kill_all_threads(self):
@@ -220,10 +222,10 @@ class StartInjector:
                 target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
             )
             self.start_time = datetime.datetime.now()
-            c.print(f"Start time {self.start_time}.", style="blue")
+            self.c.print(f"Start time {self.start_time}.", style="blue")
             self.injector.check_url()
             self.injector.brute_forcer()
-            c.print(Markdown("# Brute forcing password..."))
+            self.c.print(Markdown("# Brute forcing password..."))
             self.thread_pool_executor(max_threads, passwd_length)
             self.process_passwd_data()
         except KeyboardInterrupt:
