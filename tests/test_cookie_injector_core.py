@@ -66,7 +66,7 @@ class TestCookieInjectorCore(unittest.TestCase):
             "Welcome",
             "TrackingID"
         )
-        cookie_injector
+        pass
 
 
 if __name__ == '__main__':

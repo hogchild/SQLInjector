@@ -1,10 +1,12 @@
 #!/usr/bin/env python3.12
-# cookie_injector_setup.py ver 9.0
+# cookie_injector_setup.py
+
 import json
 import os.path
 import string
 import sys
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import validators
@@ -19,16 +21,16 @@ c = Console()
 
 # option = {
 #     "target_url": "https://0aa900cf039b09fc83a9d2ff00f100ad.web-security-academy.net/product?productId=3",
-#     "inject_code": "' anD (SELECT SUBSTRING(password,{char_numb},1) FROM users WHERE username = 'administrator') = '{character}'--",
+#     "inject_code": (
+#         "' anD (SELECT SUBSTRING(password,{char_numb},1) "
+#         "FROM users WHERE username = 'administrator') = '{character}'--"
+#     ),
 #     "passwd_length": 20,
 #     "char_set": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
 #     "confirm_string": "Welcome",
 #     "cookie_name": "TrackingId",
 #     "max_threads": 20
 # }
-
-
-from pathlib import Path
 
 
 class CookieInjSetup:
@@ -313,13 +315,13 @@ class CookieInjSetup:
                 )
                 if overwrite == "n":
                     self.c.print("e", self.config_file_path)
-                    with open(self.config_file_path, "r") as config_file:
-                        # original_config_file = json.loads(config_file.read())
-                        self.c.print(Markdown("# Original Config File"))
-                        self.read_config_file()
-                        self.c.print(self.config_file_content)
-                        # self.c.print(original_config_file)
-                        self.p.ask("Press (Enter) to quit", console=self.c, )
+                    # with open(self.config_file_path, "r") as config_file:
+                    #   # original_config_file = json.loads(config_file.read())
+                    self.c.print(Markdown("# Original Config File"))
+                    self.read_config_file()
+                    self.c.print(self.config_file_content)
+                    # self.c.print(original_config_file)
+                    self.p.ask("Press (Enter) to quit", console=self.c, )
                     sys.exit("Exiting.")
         with open(self.config_file_path, "w") as config_file:
             config_file.write(json.dumps(self.options))

