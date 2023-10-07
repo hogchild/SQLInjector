@@ -2,6 +2,7 @@
 # url_checker.py
 import sys
 from urllib.parse import urlparse
+
 import requests
 from rich.console import Console
 
@@ -141,6 +142,7 @@ class UrlChecker:
                 if str(group).startswith(code_id):
                     assigned_group = group
                     return assigned_group
+
     def http_status_responses(self) -> str:
         """
         Returns the whole record of the http status response.
@@ -172,7 +174,7 @@ class UrlChecker:
 
 
 def main():
-    urls =[
+    urls = [
         # "https://google.com/",
         "https://sivanandamusic.it/",
         "https://kamapuaa.it/",
