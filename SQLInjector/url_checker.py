@@ -132,7 +132,15 @@ class UrlChecker:
         self.c = Console()
         self.url = target_url
         self.get_status_by_status_code = None
+        self.code = None
 
+    def assign_group(self):
+        for group, *others in table_data:
+            if group:
+                code_id = str(self.code).split()[0][0]
+                if str(group).startswith(code_id):
+                    assigned_group = group
+                    return assigned_group
     def http_status_responses(self) -> str:
         """
         Returns the whole record of the http status response.
@@ -140,16 +148,13 @@ class UrlChecker:
         variable needs to be set to a specific status_code (int | str).
         :return: f"{group} | {code} | {category} | {description}"
         """
-        for group, code, category, description in table_data:
-            if str(self.get_status_by_status_code) in str(code):
+        for group, self.code, category, description in table_data:
+            if str(self.get_status_by_status_code) in str(self.code):
                 if not group:
-                    for group_category, *others in table_data:
-                        if group_category:
-                            if str(group_category).startswith(str(code).split()[0][0]):
-                                assigned_group = group_category
-                                return f"{assigned_group} | {code} | {category} | {description}"
+                    assigned_group = self.assign_group()
+                    return f"{assigned_group} | {self.code} | {category} | {description}"
                 else:
-                    return f"{group} | {code} | {category} | {description}"
+                    return f"{group} | {self.code} | {category} | {description}"
 
     def check_url_format(self):
         self.parsed_url = urlparse(self.url)
@@ -160,7 +165,7 @@ class UrlChecker:
             self.get_status_by_status_code = self.response.status_code
             http_status = self.http_status_responses()
             self.c.print(http_status, self.response.status_code)
-            self.c.print(self.response.headers)
+            self.c.print(self.response.headers, "\n")
         except requests.RequestException as e:
             self.c.print(f"Error: {e}")
             sys.exit(1)
@@ -169,9 +174,9 @@ class UrlChecker:
 def main():
     urls =[
         # "https://google.com/",
-        # "https://sivanandamusic.it/",
-        # "https://kamapuaa.it/",
-        "https://0a91002a045a58ed8325199c005b0008.web-security-academy.net/product?productId=3"
+        "https://sivanandamusic.it/",
+        "https://kamapuaa.it/",
+        # "https://0a91002a045a58ed8325199c005b0008.web-security-academy.net/product?productId=3"
     ]
     for url in urls:
         uc = UrlChecker(url)
