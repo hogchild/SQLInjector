@@ -1,190 +1,280 @@
 #!/usr/bin/env python3.12
 # url_checker.py
+import csv
+import json
+import logging
 import sys
-from urllib.parse import urlparse
+from typing import Any
 
+import click
 import requests
 from rich.console import Console
+from rich.markdown import Markdown
 
-table_data = [
-    ("1xx (Informational)", "100 Continue", "Non-Fatal Error",
-     "Indicates the server received the initial part of the request."),
-    ("", "101 Switching Protocols", "Non-Fatal Error",
-     "The server is changing protocols, typically in response to an Upgrade request from the client."),
-    ("", "102 Processing", "Non-Fatal Error",
-     "This code indicates that the server has received and is processing the request, but no response is available yet."),
-    ("", "103 Early Hints", "Non-Fatal Error",
-     "A hint that the server is pushing responses proactively, providing early information before the final response."),
-    ("2xx (Successful)", "200 OK", "Non-Fatal Error", "The server processed the request successfully."),
-    ("", "201 Created", "Non-Fatal Error", "A new resource was successfully created on the server."),
-    ("", "202 Accepted", "Non-Fatal Error",
-     "The request has been accepted for processing, but processing might not be complete."),
-    ("", "203 Non-Authoritative Information", "Non-Fatal Error",
-     "The server is a transforming proxy and has modified the response."),
-    ("", "204 No Content", "Non-Fatal Error",
-     "The server successfully processed the request, but there's no response body."),
-    ("", "205 Reset Content", "Non-Fatal Error",
-     "Instructs the client to reset the document view, such as clearing form input fields."),
-    ("", "206 Partial Content", "Non-Fatal Error",
-     "The server is returning part of the requested resource, typically for range requests."),
-    ("", "207 Multi-Status", "Non-Fatal Error", "A status for multiple independent operations."),
-    ("", "208 Already Reported", "Non-Fatal Error",
-     "Used inside a DAV: propstat response element to avoid enumerating the internal members of multiple bindings to the same collection repeatedly."),
-    ("", "226 IM Used", "Non-Fatal Error",
-     "The server has fulfilled a GET request for the resource, and the response is a representation of the result of one or more instance-manipulations applied to the current instance."),
-    ("3xx (Redirection)", "300 Multiple Choices", "Non-Fatal Error",
-     "Indicates multiple options for the resource from which the client may choose."),
-    ("", "301 Moved Permanently", "Non-Fatal Error",
-     "Indicates that the resource has been permanently moved to a new location, and the client should issue a new request to that location."),
-    ("", "302 Found", "Non-Fatal Error",
-     "Indicates that the resource is temporarily located at another location, and the client should issue a new request to that location."),
-    ("", "303 See Other", "Non-Fatal Error",
-     "Indicates that the response to the request can be found under another URI."),
-    ("", "304 Not Modified", "Non-Fatal Error",
-     "Indicates that the resource has not been modified since the version specified by the request headers."),
-    ("", "305 Use Proxy", "Non-Fatal Error",
-     "Indicates that the requested resource must be accessed through the proxy given by the Location field."),
-    ("", "307 Temporary Redirect", "Non-Fatal Error",
-     "Indicates that the request should be repeated with another URI, but the client should do this only temporarily."),
-    ("", "308 Permanent Redirect", "Non-Fatal Error",
-     "The request and all future requests should be repeated using another URI."),
-    ("4xx (Client Errors)", "400 Bad Request", "Non-Fatal Error",
-     "Indicates a client-side error, but the server is still functional."),
-    ("", "401 Unauthorized", "Non-Fatal Error", "Authentication is required, but the server is functional."),
-    ("", "402 Payment Required", "Non-Fatal Error", "This code is reserved for future use."),
-    ("", "403 Forbidden", "Non-Fatal Error",
-     "Access to the requested resource is forbidden, but the server is operational."),
-    ("", "404 Not Found", "Non-Fatal Error", "The requested resource is not found, but the server is running."),
-    ("", "405 Method Not Allowed", "Non-Fatal Error",
-     "The server doesn't support the requested HTTP method, but it's operational."),
-    ("", "406 Not Acceptable", "Non-Fatal Error",
-     "The requested resource is capable of generating only content not acceptable according to the Accept headers sent in the request."),
-    ("", "407 Proxy Authentication Required", "Non-Fatal Error",
-     "The client must first authenticate itself with the proxy."),
-    ("", "408 Request Timeout", "Non-Fatal Error", "The request timed out, but the server is functional."),
-    ("", "409 Conflict", "Non-Fatal Error",
-     "Indicates that the request could not be completed due to a conflict with the current state of the target resource."),
-    ("", "410 Gone", "Non-Fatal Error",
-     "Indicates that the requested resource is no longer available at the server and no forwarding address is known."),
-    ("", "411 Length Required", "Non-Fatal Error",
-     "The server requires a Content-Length to be included in the request."),
-    ("", "412 Precondition Failed", "Non-Fatal Error",
-     "Indicates that one or more preconditions given in the request header fields evaluated to false when tested on the server."),
-    ("", "413 Request Entity Too Large", "Non-Fatal Error",
-     "Indicates that the server is refusing to process a request because the request entity is larger than the server is willing or able to process."),
-    ("", "414 Request-URI Too Long", "Non-Fatal Error",
-     "Indicates that the server is refusing to process a request because the request URI is longer than the server is willing to interpret."),
-    ("", "415 Unsupported Media Type", "Non-Fatal Error",
-     "Indicates that the server is refusing to service the request because the request entity's media type is not supported by the server."),
-    ("", "416 Requested Range Not Satisfiable", "Non-Fatal Error",
-     "Indicates that none of the ranges in the request's Range header field overlap the current extent of the selected resource."),
-    ("", "417 Expectation Failed", "Non-Fatal Error",
-     "Indicates that the expectation given in the request's Expect header field could not be met."),
-    (
-        "", "418 I'm a Teapot", "Non-Fatal Error",
-        "A joke status code, not meant to be implemented by real HTTP servers."),
-    ("", "421 Misdirected Request", "Non-Fatal Error",
-     "The request was directed at a server that is not able to produce a response."),
-    ("", "422 Unprocessable Entity", "Non-Fatal Error",
-     "Indicates that the server understands the content type of the request entity, and the syntax of the request entity is correct, but it was unable to process the contained instructions."),
-    ("", "423 Locked", "Non-Fatal Error", "Indicates that the source or destination resource is locked."),
-    ("", "424 Failed Dependency", "Non-Fatal Error",
-     "Indicates that the method could not be performed on the resource because the requested action depended on another action and that action failed."),
-    ("", "425 Too Early", "Non-Fatal Error",
-     "Indicates that the server is unwilling to risk processing a request that might be replayed."),
-    ("", "426 Upgrade Required", "Non-Fatal Error",
-     "Indicates that the server refuses to perform the request using the current protocol but might be willing to do so after the client upgrades to a different protocol."),
-    ("", "428 Precondition Required", "Non-Fatal Error",
-     "Indicates that the server requires the request to be conditional."),
-    ("", "429 Too Many Requests", "Non-Fatal Error", "The user has sent too many requests in a given amount of time."),
-    ("", "431 Request Header Fields Too Large", "Non-Fatal Error",
-     "Indicates that the server is unwilling to process the request because its header fields are too large."),
-    ("", "451 Unavailable For Legal Reasons", "Non-Fatal Error",
-     "Indicates that the server is denying access to the resource as a consequence of a legal demand."),
-    ("5xx (Server Errors)", "500 Internal Server Error", "Potentially Fatal Error",
-     "Indicates a server-side error; the server may have issues, but it's still running."),
-    ("", "501 Not Implemented", "Potentially Fatal Error",
-     "Indicates that the server does not support the functionality required to fulfill the request."),
-    ("", "502 Bad Gateway", "Potentially Fatal Error",
-     "Indicates a gateway or proxy error, but it doesn't necessarily mean the backend server is down."),
-    ("", "503 Service Unavailable", "Potentially Fatal Error",
-     "The server or a proxy is temporarily unavailable, but it may come back online."),
-    ("", "504 Gateway Timeout", "Potentially Fatal Error",
-     "Indicates that a server acting as a gateway or proxy did not receive a timely response from an upstream server. This can suggest a server issue."),
-    ("", "505 HTTP Version Not Supported", "Potentially Fatal Error",
-     "Indicates that the server does not support the HTTP protocol version used in the request. This may suggest a configuration issue or an outdated server."),
-    ("", "506 Variant Also Negotiates", "Non-Fatal Error",
-     "Indicates that the server has an internal configuration error: the chosen variant resource is configured to engage in transparent content negotiation itself, and is therefore not a proper end point in the negotiation process."),
-    ("", "507 Insufficient Storage", "Non-Fatal Error",
-     "Indicates that the server is unable to store the representation needed to complete the request."),
-    ("", "508 Loop Detected", "Non-Fatal Error",
-     "Indicates that the server detected an infinite loop while processing the request."),
-    ("", "510 Not Extended", "Non-Fatal Error",
-     "Indicates that further extensions to the request are required for the server to fulfill it."),
-    ("", "511 Network Authentication Required", "Non-Fatal Error",
-     "Indicates that the client needs to authenticate to gain network access."),
-]
+from SQLInjector.custom_errors import InvalidURLError, InvalidInputListError, HTTP5xxResponseException, HTTP4xxResponseException, \
+    HTTP3xxResponseException
+from SQLInjector.reverse_logger import (
+    ReverseLogger, log_error_and_raise_exception, filename_parser, log_error
+)
+from data.input.data_sources import full_table_data, validation_result_tab, check_result_tab, urls_to_check_tuple
+
+filename, log_filepath = filename_parser(log_file_name=__file__)
+rev_log = ReverseLogger(
+    logger_name=filename,
+    log_file_path=log_filepath,
+    logging_level=logging.DEBUG,
+    encoding="utf-8"
+)
 
 
 class UrlChecker:
-    def __init__(self, target_url: str | bytes) -> None:
-        self.parsed_url = None
-        self.response = None
-        self.c = Console()
-        self.url = target_url
-        self.get_status_by_status_code = None
-        self.code = None
+    def __init__(
+            self, urls: tuple = None, url_list: list = None, outfile: bool = False,
+            validation_result_table: str = validation_result_tab, check_result_table: str = check_result_tab
+    ) -> None:
+        self.outfile: bool = outfile
+        self.c: Console = Console()
+        self.data_table: list = full_table_data
+        self.url: str = ""
+        self.url_list: list = url_list
+        self.urls: tuple = urls
+        self.output_report: list | tuple = []
+        self.valid_url_records: list = []
+        self.invalid_url_records: list = []
+        self.response: requests.Response = requests.Response()
+        self.status_record: str = ""
+        self.group: str = ""
+        self.status_record_str: str = ""
+        self.validation_result_table = validation_result_table
+        self.check_result_table = check_result_table
+        self.url_is_valid = None
 
-    def assign_group(self):
-        for group, *others in table_data:
-            if group:
-                code_id = str(self.code).split()[0][0]
-                if str(group).startswith(code_id):
-                    assigned_group = group
-                    return assigned_group
+    def process_urls(self) -> None:
+        """
+        Processes command line arguments and options. Initiates class variables and URLs lists.
+        :return: None
+        """
+        # If there is a self.url_list (click option), checks if it's a list as the app takes json.loads input.
+        if self.url_list is not None:
+            try:
+                list(json.dumps(self.url_list))
+            except TypeError as e:
+                error_message = (
+                    f"Type '{type(self.url_list)}' not allowed {e}."
+                    f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
+                )
+                # raise InvalidInputListError(error_message)
+                log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+            if not isinstance(self.url_list, list):
+                error_message = (
+                    f"Type '{type(self.url_list)}' not allowed. "
+                    f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
+                )
+                log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+        else:
+            self.url_list = []
+        # These are URLs passed via click positional ARGUMENT, no option i.e.: "-c".
+        # We append each urlin the iterable in the self.url_list
+        if self.urls:
+            # Append all positional arg URL to self.url_list
+            for url in self.urls:
+                self.url_list.append(url)
 
-    def http_status_responses(self) -> str:
-        """
-        Returns the whole record of the http status response.
-        It searches from the status code, so self.get_status_by_status_code
-        variable needs to be set to a specific status_code (int | str).
-        :return: f"{group} | {code} | {category} | {description}"
-        """
-        for group, self.code, category, description in table_data:
-            if str(self.get_status_by_status_code) in str(self.code):
-                if not group:
-                    assigned_group = self.assign_group()
-                    return f"{assigned_group} | {self.code} | {category} | {description}"
+    def check_url_format(self) -> bool | Exception:
+        import validators
+        if not validators.url(self.url):
+            error_message = self.url
+            self.url_is_valid = validators.url(self.url)
+            log_error_and_raise_exception(
+                logger_obj=rev_log,
+                error_message=error_message,
+                exception=InvalidURLError(error_message),
+            )
+        else:
+            return True
+
+    def validate(self):
+        try:
+            self.url_is_valid = self.check_url_format()
+        except InvalidURLError as e:
+            message = f"| Error validating the URL | {e} | {self.url_is_valid is True} | \n"
+            self.validation_result_table += message
+            stripped_message = tuple(message.split("|")[1:-1:1])
+            self.output_report.append(stripped_message)
+        else:
+            message = f"| Validation succeeded | {self.url} | {self.url_is_valid} | \n"
+            self.validation_result_table += message
+            stripped_message = tuple(message.split("|")[1:-1:1])
+            self.output_report.append(stripped_message)
+
+    def write_outfile(self):
+        outfile_name = "data/output/check_url_out.csv"
+        with open(outfile_name, "w") as outfile:
+            writer = csv.writer(outfile)
+            writer.writerow(("Outcome", "URL", "Validation Passed"))
+            for record in self.output_report:
+                writer.writerow(record)
+        self.c.print(f"Created outfile '{outfile_name}'.")
+
+    def validate_url(self) -> tuple[tuple[str]]:
+        try:
+            self.process_urls()
+        except InvalidInputListError as e:
+            error_message = f"UNABLE to process URLs: {e}."
+            self.c.print(error_message)
+            sys.exit(1)
+        else:
+            # try:
+            # Append actual result tuples to self.output_report
+            for self.url in self.url_list:
+                self.validate()
+            # except TypeError as e:
+            #     error_message = (
+            #         f"unable to process request: {e}.\n"
+            #         f"No URLs submitted: '{self.urls}'. Use '--help' for usage."
+            #     )
+            #     log_error_and_raise_exception(rev_log, error_message, InvalidURLError(error_message))
+            self.output_report = tuple(self.output_report)
+            if self.outfile:
+                if self.output_report:
+                    self.write_outfile()
                 else:
-                    return f"{group} | {self.code} | {category} | {description}"
+                    error_message = (
+                        f"Output report empty: '{self.output_report}'. "
+                        f"Maybe you forgot to submit an URL: '{self.url}'."
+                    )
+                    log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+            print()
+            self.c.print(Markdown("---\n"))
+            self.c.print(Markdown(self.validation_result_table))
+            return self.output_report
 
-    def check_url_format(self):
-        self.parsed_url = urlparse(self.url)
+    def get_http_status_record(self):
+        for self.group, status_code, category, description in self.data_table:
+            if str(self.response.status_code) in str(status_code):
+                return self.group, status_code, category, description
+
+    # def process_response(self):
+    #     if self.group.startswith(str(5)):
+    #         error_message = f"The HTTP response category is {self.group}. The server may have problems."
+    #         log_error_and_raise_exception(rev_log, error_message, HTTP5xxResponseException(error_message))
+    #     elif self.group.startswith(str(4)):
+    #         info_message = f"The HTTP response category is {self.group}. The server could still be ok."
+    #         log_error_and_raise_exception(rev_log, info_message, HTTP4xxResponseException(info_message))
+    #     elif self.group.startswith(str(3)):
+    #         info_message = (f"The HTTP response category is {self.group}. The server has redirected our request "
+    #                         f"to a new address.")
+    #         log_error_and_raise_exception(rev_log, info_message, HTTP3xxResponseException(info_message))
+
+    def process_response(self):
+        pass
 
     def check_url(self):
         try:
-            self.response = requests.head(self.url)
-            self.get_status_by_status_code = self.response.status_code
-            http_status = self.http_status_responses()
-            self.c.print(http_status, self.response.status_code)
-            self.c.print(self.response.headers, "\n")
-        except requests.RequestException as e:
-            self.c.print(f"Error: {e}")
+            self.validate_url()
+        except InvalidURLError as e:
+            error_message = f"URL validation FAILED: {e}."
+            log_error_and_raise_exception(rev_log, error_message, TypeError(error_message))
+        else:
+            for record in self.output_report:
+                if "True" in record[2]:
+                    self.valid_url_records.append(record)
+                else:
+                    self.invalid_url_records.append(record)
+            # self.c.print("Invalid (format) URLs:", self.invalid_url_records, style="red")
+            # self.c.print("Valid (format) URLs:", self.valid_url_records, style="green")
+            self.output_report = tuple(self.valid_url_records)
+            # self.c.print("Out Record:", list(self.output_report))
+            total_requests = len(self.output_report)
+            request_left = total_requests
+            for url_record in self.output_report:
+                self.url, self.url_is_valid = url_record[1:]
+                try:
+                    self.response = requests.head(self.url.strip())
+                except requests.RequestException as e:
+                    self.c.print(f"HEAD request failed for URL {self.url}: {e}")
+                else:
+                    self.c.print(
+                        f"Sending head requests to URL '{self.url}'. "
+                        f"Request left {request_left} total requests {total_requests}. ",
+                        end="\r"
+                    )
+                    request_left -= 1
+                self.status_record = self.get_http_status_record()
+                self.status_record_str = ', '.join(self.get_http_status_record())
+                message = f"| {self.status_record[1]} | {self.url} | {self.status_record[2]} | {self.status_record[3]} | \n"
+                self.check_result_table += message
+            self.c.print(Markdown("---\n"))
+            print()
+            self.c.print(Markdown(self.check_result_table))
+            # try:
+            self.process_response()
+            # except HTTP5xxResponseException as e:
+            #     error_message = Markdown(f"Server Error: \n- Error fetching the URL {self.url}.\n\t- {e}")
+            #     log_error(rev_log, error_message)
+            #     print()
+            # except HTTP4xxResponseException as e:
+            #     error_message = Markdown(f"Client Error: \n- Error fetching the URL {self.url}.\n\t- {e}")
+            #     log_error(rev_log, error_message)
+            #     print()
+            # except HTTP3xxResponseException as e:
+            #     info_message = Markdown(f"Redirection: \n- Request to URL {self.url} was redirected.\n\t- {e}")
+            #     log_error(rev_log, info_message)
+            #     print()
+
+
+
+
+@click.command(
+    help=(
+            "This app is an URL checker. It checks the validity of an URL, and checks the target host with head or get "
+            "requests."
+    )
+)
+@click.argument(
+    "urls",
+    nargs=-1,
+    required=False,
+    metavar="[url_1] [url_2] [...]"
+)
+@click.option(
+    "-l", "--url-list", "url_list",
+    help='Pass a list of URLs to check.',
+    # default=json.dumps([]),
+    # default=json.dumps(urls_to_check),
+    # default=json.dumps(urls_to_check_tuple),
+    required=False,
+    type=json.loads
+)
+@click.option(
+    "-c", "--check-format", "check_format",
+    help="Validate only the URL format, don't send any requests.",
+    is_flag=True,
+    required=False,
+    default=False,
+)
+@click.option(
+    "-o", "--outfile",
+    help="Write output to data/output/check_url_out.csv.",
+    is_flag=True,
+    required=False,
+    default=False,
+)
+def main(urls, url_list, outfile, check_format):
+    uc = UrlChecker(urls, url_list, outfile)
+    if check_format:
+        try:
+            uc.validate_url()
+        except TypeError as e:
+            Console().print(f"URL validation FAILED: {e}.")
             sys.exit(1)
 
-
-def main():
-    urls = [
-        # "https://google.com/",
-        "https://sivanandamusic.it/",
-        "https://kamapuaa.it/",
-        # "https://0a91002a045a58ed8325199c005b0008.web-security-academy.net/product?productId=3"
-    ]
-    for url in urls:
-        uc = UrlChecker(url)
-        uc.check_url()
-    # uc = UrlChecker("https://0ad500c5035e0be18303851d0016008c.web-security-academy.net/product?productId=4")
-    # uc.check_url()
+    else:
+        try:
+            uc.check_url()
+        except TypeError as e:
+            Console().print(f"URL check FAILED: {e}.")
+            sys.exit(1)
 
 
 if __name__ == '__main__':

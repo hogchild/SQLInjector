@@ -1,0 +1,5 @@
+Outcome,URL,Validation Passed
+ Error validating the URL ," hd:/hebd,it ", False 
+ Validation succeeded , https://kamapuaa.it , True 
+ Validation succeeded , https://sivanandamusic.it/ , True 
+ Validation succeeded , https://sivanandamusic.it/lyrics , True 

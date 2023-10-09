@@ -7,6 +7,9 @@ import traceback
 import rich.errors
 from rich.console import Console
 from logging.handlers import RotatingFileHandler
+
+from rich.markdown import Markdown
+
 # from reverse_server_error_classes import PermissionDeniedError
 
 c = Console()
@@ -19,23 +22,23 @@ class PermissionDeniedError(Exception):
         super().__init__(message)
 
 
-def log_error_and_raise_exception(logger_obj: "ReverseLogger", error_message: str, exception: Exception):
+def log_error_and_raise_exception(logger_obj: "ReverseLogger", error_message: str | Markdown, exception: Exception):
     logger_obj.log_exception(error_message)
     raise exception from None
 
 
-def log_error(logger_obj, error_message: str) -> None:
+def log_error(logger_obj, error_message: str | Markdown) -> None:
     logger_obj.log_exception(error_message)
     c.print(error_message)
 
 
 def log_info(
         logger_obj,
-        info_message: str,
+        info_message: str | Markdown,
         lineno: int,
         style: str = None,
         debug_mode=True,  # True or False. line to print only lineno and not filename
-        stdout_debug=False,
+        stdout_debug=True,
         print_anyway=False,
 ) -> None:
     record = logging.LogRecord(
@@ -141,7 +144,7 @@ class ReverseLogger:
             logger_name=filename,
             log_file_path=log_filepath,
             encoding="utf8",
-            logging_level=logging.ERROR,
+            logging_level=logging.DEBUG,
 
     ):
         self.logger_name = logger_name
