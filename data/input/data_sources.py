@@ -378,7 +378,7 @@ validation_result_tab = """
 """
 check_result_tab = """
 **URL Check**
-| **Status** | **URL** | **Category** | **URL is Valid** |
+| **Status** | **URL** | **Category** | **Description** |
 | :--------: | :----------: | :-----: | :--------------: |
 """
 

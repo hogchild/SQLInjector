@@ -4,17 +4,15 @@ import csv
 import json
 import logging
 import sys
-from typing import Any
 
 import click
 import requests
 from rich.console import Console
 from rich.markdown import Markdown
 
-from SQLInjector.custom_errors import InvalidURLError, InvalidInputListError, HTTP5xxResponseException, HTTP4xxResponseException, \
-    HTTP3xxResponseException
+from SQLInjector.custom_errors import InvalidURLError, InvalidInputListError
 from SQLInjector.reverse_logger import (
-    ReverseLogger, log_error_and_raise_exception, filename_parser, log_error
+    ReverseLogger, log_error_and_raise_exception, filename_parser
 )
 from data.input.data_sources import full_table_data, validation_result_tab, check_result_tab, urls_to_check_tuple
 
@@ -28,6 +26,9 @@ rev_log = ReverseLogger(
 
 
 class UrlChecker:
+    """
+    UrlChecker checks URL format, captures HEAD and GET requests.
+    """
     def __init__(
             self, urls: tuple = None, url_list: list = None, outfile: bool = False,
             validation_result_table: str = validation_result_tab, check_result_table: str = check_result_tab
@@ -38,16 +39,20 @@ class UrlChecker:
         self.url: str = ""
         self.url_list: list = url_list
         self.urls: tuple = urls
-        self.output_report: list | tuple = []
+        self.validation_output_report: list | tuple = []
+        self.head_request_output_report: list | tuple = []
         self.valid_url_records: list = []
         self.invalid_url_records: list = []
         self.response: requests.Response = requests.Response()
         self.status_record: str = ""
         self.group: str = ""
         self.status_record_str: str = ""
-        self.validation_result_table = validation_result_table
-        self.check_result_table = check_result_table
-        self.url_is_valid = None
+        self.validation_result_table: str = validation_result_table
+        self.check_result_table: str = check_result_table
+        self.url_is_valid: None = None
+        self.sending_get_requests: bool = False
+
+    # ################################### START OF VALIDATION PROCESS ################################### #
 
     def process_urls(self) -> None:
         """
@@ -74,7 +79,7 @@ class UrlChecker:
         else:
             self.url_list = []
         # These are URLs passed via click positional ARGUMENT, no option i.e.: "-c".
-        # We append each urlin the iterable in the self.url_list
+        # We append each URL in the iterable in the self.url_list
         if self.urls:
             # Append all positional arg URL to self.url_list
             for url in self.urls:
@@ -93,28 +98,85 @@ class UrlChecker:
         else:
             return True
 
-    def validate(self):
+    def validate(self) -> None:
+        """
+        Validates the structure of the URL and populates the output record appending both True and False results.
+        :return: None.
+        """
         try:
             self.url_is_valid = self.check_url_format()
         except InvalidURLError as e:
             message = f"| Error validating the URL | {e} | {self.url_is_valid is True} | \n"
             self.validation_result_table += message
             stripped_message = tuple(message.split("|")[1:-1:1])
-            self.output_report.append(stripped_message)
+            self.validation_output_report.append(stripped_message)
         else:
             message = f"| Validation succeeded | {self.url} | {self.url_is_valid} | \n"
             self.validation_result_table += message
             stripped_message = tuple(message.split("|")[1:-1:1])
-            self.output_report.append(stripped_message)
+            self.validation_output_report.append(stripped_message)
 
-    def write_outfile(self):
+    def write_outfile(self, check_url_data):
+        """
+        Writes to data/output/check_url_out.csv.
+        :return: None
+        """
+        open_mode = "w"
+        column_raw = ("Outcome", "URL", "Validation Passed")
+        if check_url_data:
+            open_mode = "a"
+            column_raw = ("Status", "URL", "Category", "Description")
         outfile_name = "data/output/check_url_out.csv"
-        with open(outfile_name, "w") as outfile:
+        with open(outfile_name, open_mode) as outfile:
             writer = csv.writer(outfile)
-            writer.writerow(("Outcome", "URL", "Validation Passed"))
-            for record in self.output_report:
-                writer.writerow(record)
+            writer.writerow(column_raw)
+            output_report = self.validation_output_report
+            if check_url_data:
+                output_report = self.head_request_output_report
+            for record in output_report:
+                if not check_url_data:
+                    writer.writerow(record)
+                else:
+                    try:
+                        if isinstance(int(record[0].split()[0]), int):
+                            writer.writerow(record)
+                            # print(record[0].split()[0])
+                    except ValueError:
+                        pass
+                    # writer.writerow(record)
+                    # writer.writerow(self.check_result_table)
+            writer.writerow("")
         self.c.print(f"Created outfile '{outfile_name}'.")
+
+    def handle_out_file(self, check_url_data) -> None:
+        """
+        Check if the output file has been requested (in this case from click option "-o"),
+         and writes the out report to a CSV file.\n
+         **NOTE**: At the moment the function only writes to file the Validation Tests results.
+        :return:
+        """
+        if self.outfile:
+            if check_url_data:
+                if self.head_request_output_report:
+                    self.write_outfile(check_url_data)
+            else:
+                if self.validation_output_report:
+                    self.write_outfile(check_url_data)
+                else:
+                    error_message = (
+                        f"Output report empty: '{self.validation_output_report}'. "
+                        f"Maybe you forgot to submit an URL: '{self.url}'."
+                    )
+                    log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+
+    def print_markdown_validation_result_tables(self) -> None:
+        """
+        Prints the final Markdown-object results, the Validation Result Table.
+        :return: None
+        """
+        print()
+        self.c.print(Markdown("---\n"))
+        self.c.print(Markdown(self.validation_result_table))
 
     def validate_url(self) -> tuple[tuple[str]]:
         try:
@@ -124,105 +186,139 @@ class UrlChecker:
             self.c.print(error_message)
             sys.exit(1)
         else:
-            # try:
             # Append actual result tuples to self.output_report
             for self.url in self.url_list:
                 self.validate()
-            # except TypeError as e:
-            #     error_message = (
-            #         f"unable to process request: {e}.\n"
-            #         f"No URLs submitted: '{self.urls}'. Use '--help' for usage."
-            #     )
-            #     log_error_and_raise_exception(rev_log, error_message, InvalidURLError(error_message))
-            self.output_report = tuple(self.output_report)
-            if self.outfile:
-                if self.output_report:
-                    self.write_outfile()
-                else:
-                    error_message = (
-                        f"Output report empty: '{self.output_report}'. "
-                        f"Maybe you forgot to submit an URL: '{self.url}'."
-                    )
-                    log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
-            print()
-            self.c.print(Markdown("---\n"))
-            self.c.print(Markdown(self.validation_result_table))
-            return self.output_report
+            self.validation_output_report = tuple(self.validation_output_report)
+            # Check if outfile has been requested and create it if necessary.
+            self.handle_out_file(check_url_data=False)
+            # Print final Markdown-object results
+            self.print_markdown_validation_result_tables()
+            return self.validation_output_report
 
-    def get_http_status_record(self):
+    # ################################### START OF CHECK PROCESS ################################### #
+
+    def create_validation_result_lists(self) -> None:
+        """
+        Filters out all valid URLs from the Validation Output Report
+        ith the results from the validation process ("validate_url()" function).
+        :return: None
+        """
+        for record in self.validation_output_report:
+            if "True" in record[2]:
+                self.valid_url_records.append(record)
+            else:
+                self.invalid_url_records.append(record)
+        self.head_request_output_report = tuple(self.valid_url_records)
+        # self.c.print("Invalid (format) URLs:", self.invalid_url_records, style="red")
+        # self.c.print("Valid (format) URLs:", self.valid_url_records, style="green")
+        # self.c.print("Out Record:", list(self.output_report))
+
+    def send_head_requests(self, url_record, requests_left, total_requests) -> None:
+        self.url, self.url_is_valid = url_record[1:]
+        try:
+            self.response = requests.head(self.url.strip())
+        except requests.RequestException as e:
+            self.c.print(f"HEAD request failed for URL {self.url}: {e}")
+        else:
+            self.c.print(
+                f"Sending HEAD requests to URL '{self.url}'. "
+                f"Request left {requests_left} total requests {total_requests}. ",
+                end="\r"
+            )
+
+    def send_get_requests(self, record, requests_left, total_requests):
+        self.url, self.url_is_valid = record[1:]
+        try:
+            self.response = requests.get(self.url.strip())
+        except requests.RequestException as e:
+            self.c.print(f"GET request failed for URL {self.url}: {e}")
+        else:
+            self.c.print(
+                f"Sending GET requests to URL '{self.url}'. "
+                f"Request left {requests_left} total requests {total_requests}. ",
+                end="\r"
+            )
+
+    def get_http_status_record(self) -> tuple:
         for self.group, status_code, category, description in self.data_table:
             if str(self.response.status_code) in str(status_code):
                 return self.group, status_code, category, description
 
-    # def process_response(self):
-    #     if self.group.startswith(str(5)):
-    #         error_message = f"The HTTP response category is {self.group}. The server may have problems."
-    #         log_error_and_raise_exception(rev_log, error_message, HTTP5xxResponseException(error_message))
-    #     elif self.group.startswith(str(4)):
-    #         info_message = f"The HTTP response category is {self.group}. The server could still be ok."
-    #         log_error_and_raise_exception(rev_log, info_message, HTTP4xxResponseException(info_message))
-    #     elif self.group.startswith(str(3)):
-    #         info_message = (f"The HTTP response category is {self.group}. The server has redirected our request "
-    #                         f"to a new address.")
-    #         log_error_and_raise_exception(rev_log, info_message, HTTP3xxResponseException(info_message))
+    def update_check_result_table(self) -> None:
+        """
+        Parses status code record from the internal app database for the current self.url.
+        It creates the URL record (message) then updates the Check Result Table which will be
+        displayed at the end.\n
+        Finally populates the Head Request Output Report which is the final Check Url data
+        the app will return with the Check Head process.
+        :return: None
+        """
+        # Parse response status (code) record
+        self.status_record = self.get_http_status_record()
+        # Update Head Request (Check) Result Table
+        message = f"| {self.status_record[1]} | {self.url} | {self.status_record[2]} | {self.status_record[3]} | \n"
+        self.check_result_table += message
+        # Populate Head Request Output Report
+        output_tuple = (self.status_record[1], self.url, self.status_record[2], self.status_record[3])
+        self.head_request_output_report = list(self.head_request_output_report)
+        self.head_request_output_report.append(output_tuple)
+        self.head_request_output_report = tuple(self.head_request_output_report)
+        # self.c.print(self.head_request_output_report)
 
-    def process_response(self):
-        pass
+    def send_requests(self):
+        total_requests = len(self.head_request_output_report)
+        requests_left = total_requests
+        # Send a HEAD request for each URL
+        for record in self.head_request_output_report:
+            if self.sending_get_requests:
+                self.send_get_requests(record, requests_left, total_requests)
+            elif not self.sending_get_requests:
+                self.send_head_requests(record, requests_left, total_requests)
+            requests_left -= 1
+            # Get HTTP status URL record and update self.check_result_table
+            self.update_check_result_table()
+
+    def print_head_response_results(self) -> None:
+        """
+        Prints the Check Result Table. This is the final table the app
+        displays at the end with the results from the HEAD requests.
+        :return: None
+        """
+        self.c.print(Markdown("---\n"))
+        print()
+        self.c.print(Markdown(self.check_result_table))
 
     def check_url(self):
+        # Validate URLs:
         try:
             self.validate_url()
         except InvalidURLError as e:
             error_message = f"URL validation FAILED: {e}."
             log_error_and_raise_exception(rev_log, error_message, TypeError(error_message))
         else:
-            for record in self.output_report:
-                if "True" in record[2]:
-                    self.valid_url_records.append(record)
-                else:
-                    self.invalid_url_records.append(record)
-            # self.c.print("Invalid (format) URLs:", self.invalid_url_records, style="red")
-            # self.c.print("Valid (format) URLs:", self.valid_url_records, style="green")
-            self.output_report = tuple(self.valid_url_records)
-            # self.c.print("Out Record:", list(self.output_report))
-            total_requests = len(self.output_report)
-            request_left = total_requests
-            for url_record in self.output_report:
-                self.url, self.url_is_valid = url_record[1:]
-                try:
-                    self.response = requests.head(self.url.strip())
-                except requests.RequestException as e:
-                    self.c.print(f"HEAD request failed for URL {self.url}: {e}")
-                else:
-                    self.c.print(
-                        f"Sending head requests to URL '{self.url}'. "
-                        f"Request left {request_left} total requests {total_requests}. ",
-                        end="\r"
-                    )
-                    request_left -= 1
-                self.status_record = self.get_http_status_record()
-                self.status_record_str = ', '.join(self.get_http_status_record())
-                message = f"| {self.status_record[1]} | {self.url} | {self.status_record[2]} | {self.status_record[3]} | \n"
-                self.check_result_table += message
-            self.c.print(Markdown("---\n"))
-            print()
-            self.c.print(Markdown(self.check_result_table))
-            # try:
-            self.process_response()
-            # except HTTP5xxResponseException as e:
-            #     error_message = Markdown(f"Server Error: \n- Error fetching the URL {self.url}.\n\t- {e}")
-            #     log_error(rev_log, error_message)
-            #     print()
-            # except HTTP4xxResponseException as e:
-            #     error_message = Markdown(f"Client Error: \n- Error fetching the URL {self.url}.\n\t- {e}")
-            #     log_error(rev_log, error_message)
-            #     print()
-            # except HTTP3xxResponseException as e:
-            #     info_message = Markdown(f"Redirection: \n- Request to URL {self.url} was redirected.\n\t- {e}")
-            #     log_error(rev_log, info_message)
-            #     print()
+            # Create valid and invalid URL lists
+            self.create_validation_result_lists()
+            # Send HEAD requests, collect and print responses.
+            self.send_requests()
+            # Print results
+            self.print_head_response_results()
+            self.handle_out_file(check_url_data=True)
+            return self.head_request_output_report
 
+    # ################################### START OF SEND GET REQUESTS PROCESS ################################### #
 
+    def send_get_request(self):
+        print(self.validate_url())
+        self.create_validation_result_lists()
+        self.c.print(Markdown("# Validate Output Record"), self.validation_output_report)
+        self.c.print(Markdown("# Head Request Output Record"), self.head_request_output_report)
+        self.sending_get_requests = True
+        self.send_requests()
+        self.sending_get_requests = True
+        self.print_head_response_results()
+        self.handle_out_file(check_url_data=True)
+        return self.head_request_output_report
 
 
 @click.command(
@@ -242,16 +338,9 @@ class UrlChecker:
     help='Pass a list of URLs to check.',
     # default=json.dumps([]),
     # default=json.dumps(urls_to_check),
-    # default=json.dumps(urls_to_check_tuple),
+    default=json.dumps(urls_to_check_tuple),
     required=False,
     type=json.loads
-)
-@click.option(
-    "-c", "--check-format", "check_format",
-    help="Validate only the URL format, don't send any requests.",
-    is_flag=True,
-    required=False,
-    default=False,
 )
 @click.option(
     "-o", "--outfile",
@@ -260,15 +349,35 @@ class UrlChecker:
     required=False,
     default=False,
 )
-def main(urls, url_list, outfile, check_format):
+@click.option(
+    "-v", "--validate-url", "validate_url",
+    help="Validate only the URL format, don't send any requests.",
+    is_flag=True,
+    required=False,
+    default=False,
+)
+@click.option(
+    "-g", "--send-get", "send_get_requests",
+    help="Turn on this flag to send GET requests in place of the lighter HEAD requests.",
+    is_flag=True,
+    required=False,
+    default=False,
+)
+def main(urls, url_list, outfile, validate_url, send_get_requests):
     uc = UrlChecker(urls, url_list, outfile)
-    if check_format:
+    if validate_url:
         try:
             uc.validate_url()
         except TypeError as e:
             Console().print(f"URL validation FAILED: {e}.")
             sys.exit(1)
 
+    elif send_get_requests:
+        try:
+            Console().print("cristo", uc.send_get_request())
+        except TypeError as e:
+            Console().print(f"URL check FAILED: {e}.")
+            sys.exit(1)
     else:
         try:
             uc.check_url()
