@@ -379,25 +379,10 @@ validation_result_tab = """
 check_result_tab = """
 **URL Check**
 | **Status** | **URL** | **Category** | **Description** |
-| :--------: | :----------: | :-----: | :--------------: |
+| :--------: | :-----: | :----------: | :-------------: |
 """
 
 urls_to_check = [
-    "hps://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
-    "https://google.com",
-    "https://kamapuaa.it",
-    "https://sivanandamusic.it",
-    "https://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
-    "htts://google.com/",
-    "https:/sivanandamusic.it/",
-    "https://kamapuaa",
-    "https://kamapuaa"
-    "   .it/",
-    "https://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
-    "https://0ad4009203f917ae82abee05000300cb.web-security-academy.net/product?productId=9"
-]
-
-urls_to_check_tuple = (
     # "hps://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
     "https://google.com",
     "https://kamapuaa.it",
@@ -410,4 +395,39 @@ urls_to_check_tuple = (
     "   .it/",
     # "https://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
     # "https://0ad4009203f917ae82abee05000300cb.web-security-academy.net/product?productId=9"
+]
+
+urls_to_check2 = (
+    # "hps://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
+    "https://google.com",
+    "https://kamapuaa.it",
+    "https://sivanandamusic.it",
+    # "https://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
+    "htts://google.com/",
+    "https:/sivanandamusic.it/",
+    "https://kamapuaa",
+    "https://kamapuaa"
+    "   .it/",
+    # "https://0a6b00fb031b948681b107f5004700a5.web-security-academy.net/product?productId=5",
+    # "https://0ad4009203f917ae82abee05000300cb.web-security-academy.net/product?productId=9"
+)
+
+urls_to_check_tuple = (
+"https://google.com",
+"https://kamapuaa.it",
+"https://sivanandamusic.it",
+"https://google.com",
+"https://kamapuaa.it",
+"https://sivanandamusic.it",
+"https://google.com",
+"https://kamapuaa.it",
+"https://sivanandamusic.it",
+"https://google.com",
+"https://kamapuaa.it",
+"https://sivanandamusic.it",
+"htts://google.com/",
+"https:/sivanandamusic.it/",
+"https://kamapuaa",
+"https://kamapuaa"
+"   .it/",
 )
