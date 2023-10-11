@@ -1,16 +1,12 @@
 Outcome,URL,Validation Passed
- Validation succeeded , https://google.com , True 
- Validation succeeded , https://kamapuaa.it , True 
- Validation succeeded , https://sivanandamusic.it , True 
- Error validating the URL , htts://google.com/ , False 
- Error validating the URL , https:/sivanandamusic.it/ , False 
- Error validating the URL , https://kamapuaa , False 
- Error validating the URL , https://kamapuaa   .it/ , False 
- Validation succeeded , http://google.it , True 
+ Error validating the URL , a , False 
+ Error validating the URL , 2 , False 
+ Validation succeeded , http://giallo.it , True 
+ Validation succeeded , https://google.it , True 
+ Validation succeeded , https://maddalena.it , True 
 
 Status,URL,Category,Description
-200 OK, https://google.com ,Non-Fatal Error,The server processed the request successfully.
-200 OK, https://kamapuaa.it ,Non-Fatal Error,The server processed the request successfully.
-200 OK, https://sivanandamusic.it ,Non-Fatal Error,The server processed the request successfully.
-200 OK, http://google.it ,Non-Fatal Error,The server processed the request successfully.
+200 OK, http://giallo.it ,Non-Fatal Error,The server processed the request successfully.
+200 OK, https://google.it ,Non-Fatal Error,The server processed the request successfully.
+403 Forbidden, https://maddalena.it ,Non-Fatal Error,"Access to the requested resource is forbidden, but the server is operational."
 

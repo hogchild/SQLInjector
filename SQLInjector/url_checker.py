@@ -15,7 +15,7 @@ from SQLInjector.custom_errors import InvalidURLError, InvalidInputListError
 from SQLInjector.reverse_logger import (
     ReverseLogger, log_error_and_raise_exception, filename_parser
 )
-from data.input.data_sources import full_table_data, validation_result_tab, check_result_tab, urls_to_check
+from data.input.data_sources import full_table_data, validation_result_tab, check_result_tab, urls_to_check_tuple
 
 filename, log_filepath = filename_parser(log_file_name=__file__)
 rev_log = ReverseLogger(
@@ -35,6 +35,15 @@ class UrlChecker:
             self, urls: tuple = None, url_list: list = None, outfile: bool = False,
             validation_result_table: str = validation_result_tab, check_result_table: str = check_result_tab
     ) -> None:
+        """
+        Initialize the UrlChecker instance.
+
+        :param urls: Tuple of URLs.
+        :param url_list: List of URLs.
+        :param outfile: Flag indicating whether to write to an output file.
+        :param validation_result_table: Table for validation results.
+        :param check_result_table: Table for check results.
+        """
         self.outfile: bool = outfile
         self.c: Console = Console()
         self.data_table: list = full_table_data
@@ -58,35 +67,69 @@ class UrlChecker:
 
     # ################################### START OF VALIDATION PROCESS ################################### #
 
+    def _load_json_dumps(self) -> None:
+        """
+        Processes JSON strings passed in with the -l option in correct JSON syntax.
+        This is because the app accepts a python list as commend line argument "-l" option.\n
+        Raises InvalidInputListError if the argument is not a list type.
+        :return: None
+        """
+        try:
+            list(json.dumps(self.url_list))
+        except TypeError as e:
+            error_message = (
+                f"Type '{type(self.url_list)}' not allowed {e}."
+                f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
+            )
+            log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+
+    def _validate_url_list_type(self) -> None:
+        """
+        Checks if the URL List is actually a list type, else raises InvalidInputListError
+        :return:
+        """
+        if not isinstance(self.url_list, list):
+            error_message = (
+                f"Type '{type(self.url_list)}' not allowed. "
+                f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
+            )
+            log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+
+    def _validate_input_type(self) -> None:
+        """
+        If there is a self.url_list (click option), checks if it's a list type, as the app takes "json.loads" input.
+        :return: None
+        """
+        # Load json.dumps and validate URL type is List
+        self._load_json_dumps()
+        # Check if URL List is a list type
+        self._validate_url_list_type()
+
+    def elaborate_cmd_line_args(self) -> None:
+        """
+        These are URLs passed via click positional ARGUMENT, no option i.e.: "-c" or similar.
+        Appending each URL in the iterable in the self.url_list.
+        :return: None
+        """
+        if self.urls:
+            # Append all positional arg URL to self.url_list
+            for url in self.urls:
+                self.url_list.append(url)
+
     def process_urls(self) -> None:
         """
         Processes command line arguments and options. Initiates class variables and URLs lists.
         :return: None
         """
-        # If there is a self.url_list (click option), checks if it's a list as the app takes json.loads input.
+        # If there is a URL List "self.url_list" (click option),
+        # checks if it's a list type, as the app takes json.loads input.
         if self.url_list is not None:
-            try:
-                list(json.dumps(self.url_list))
-            except TypeError as e:
-                error_message = (
-                    f"Type '{type(self.url_list)}' not allowed {e}."
-                    f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
-                )
-                log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
-            if not isinstance(self.url_list, list):
-                error_message = (
-                    f"Type '{type(self.url_list)}' not allowed. "
-                    f"""Enter a list in JSON syntax (i.e.: '["url_1", "url_2"]')"""
-                )
-                log_error_and_raise_exception(rev_log, error_message, InvalidInputListError(error_message))
+            self._validate_input_type()
         else:
             self.url_list = []
-        # These are URLs passed via click positional ARGUMENT, no option i.e.: "-c" or similar.
-        # Appending each URL in the iterable in the self.url_list
-        if self.urls:
-            # Append all positional arg URL to self.url_list
-            for url in self.urls:
-                self.url_list.append(url)
+            # These are URLs passed via click positional ARGUMENT, no option i.e.: "-c" or similar.
+            # Appending each URL in the iterable in the self.url_list
+            self.elaborate_cmd_line_args()
 
     def check_url_format(self) -> bool | Exception:
         """
@@ -158,6 +201,20 @@ class UrlChecker:
         else:
             writer.writerow(record)
 
+    def _parse_req_type_print_confirm_message(self, outfile_name):
+        if self.sending_get_request:
+            self.c.print(f"Created GET requests outfile '{outfile_name}'.")
+            return
+        elif self.sending_head_request:
+            self.c.print(f"Created HEAD requests outfile '{outfile_name}'.")
+            return
+
+    def _print_validation_confirm_message(self, outfile_name):
+        if self.sending_head_request or self.sending_get_request:
+            return
+        else:
+            self.c.print(f"Created URL validation outfile '{outfile_name}'.")
+
     def _write_outfile_final_message(self, check_url_data: bool, outfile_name: str) -> None:
         """
         Prints the final confirmation message after the outputfile has been written.
@@ -167,17 +224,20 @@ class UrlChecker:
         :return:
         """
         if check_url_data:
-            if self.sending_get_request:
-                self.c.print(f"Created GET requests outfile '{outfile_name}'.")
-                return
-            elif self.sending_head_request:
-                self.c.print(f"Created HEAD requests outfile '{outfile_name}'.")
-                return
+            self._parse_req_type_print_confirm_message(outfile_name)
         else:
-            if self.sending_head_request or self.sending_get_request:
-                return
-            else:
-                self.c.print(f"Created URL validation outfile '{outfile_name}'.")
+            self._print_validation_confirm_message(outfile_name)
+
+    def _write_csv_file(self, outfile_name, open_mode, column_raw, check_url_data):
+        with open(outfile_name, open_mode, encoding="utf-8") as outfile:
+            writer = csv.writer(outfile, delimiter=",")
+            writer.writerow(column_raw)
+            # Parse output report based on what table will be written to file: Validation, HEAD or GET Output Report
+            output_report = self.parse_output_report(check_url_data)
+            # Iterate report, write main body (a raw) to file then leave a blank raw.
+            for record in output_report:
+                self.write_main_file_body(writer, record, check_url_data)
+            writer.writerow([])
 
     def write_outfile(self, check_url_data):
         """
@@ -187,15 +247,7 @@ class UrlChecker:
         # Initialize data for writing to file.
         open_mode, column_raw, outfile_name = self._write_out_file_init_data(check_url_data)
         # Write data to file.
-        with open(outfile_name, open_mode, encoding="utf-8") as outfile:
-            writer = csv.writer(outfile)
-            writer.writerow(column_raw)
-            # Parse output report based on what table will be written to file: Validation, HEAD or GET Output Report
-            output_report = self.parse_output_report(check_url_data)
-            # Iterate report, write main body (a raw) to file then leave a blank raw.
-            for record in output_report:
-                self.write_main_file_body(writer, record, check_url_data)
-            writer.writerow([])
+        self._write_csv_file(outfile_name, open_mode, column_raw, check_url_data)
         self._write_outfile_final_message(check_url_data, outfile_name)
 
     def handle_out_file(self, check_url_data) -> None:
@@ -227,7 +279,6 @@ class UrlChecker:
             # Append actual result tuples to self.output_report
             for self.url in self.url_list:
                 self.validate()
-            # self.validation_output_report = tuple(self.validation_output_report)  # --> CHECK HERE
             # Print final Validation Result Table
             self.print_validation_result_table()
             # Check if outfile has been requested and create it if necessary.
@@ -239,7 +290,7 @@ class UrlChecker:
     def create_validation_result_lists(self) -> None:
         """
         Filters out all valid URLs from the Validation Output Report
-        ith the results from the validation process ("validate_url()" function).
+        with the results from the validation process ("validate_url()" function).
         :return: None
         """
         for record in self.validation_output_report:
@@ -249,15 +300,8 @@ class UrlChecker:
                 self.invalid_url_records.append(record)
         if self.sending_get_request:
             self.get_request_output_report = self.valid_url_records
-            # self.c.print("sending get requests off.", style="red")
-            # self.c.print("sending get requests off.", self.head_request_output_report, style="red")
         else:
             self.head_request_output_report = self.valid_url_records
-            # self.get_request_output_report = tuple(self.valid_url_records)
-            # self.c.print("sending get requests on.", self.get_request_output_report, style="green")
-        # self.c.print("Invalid (format) URLs:", self.invalid_url_records, style="red")
-        # self.c.print("Valid (format) URLs:", self.valid_url_records, style="green")
-        # self.c.print("Out Record:", list(self.output_report))
 
     def send_head_requests(self, url_record, requests_left, total_requests) -> None:
         self.url, self.url_is_valid = url_record[1:]
@@ -290,6 +334,14 @@ class UrlChecker:
             if str(self.response.status_code) in str(status_code):
                 return self.group, status_code, category, description
 
+    def _set_output_report(self, output_tuple):
+        if self.sending_head_request:
+            self.head_request_output_report = list(self.head_request_output_report)
+            self.head_request_output_report.append(output_tuple)
+        if self.sending_get_request:
+            self.get_request_output_report = list(self.get_request_output_report)
+            self.get_request_output_report.append(output_tuple)
+
     def update_check_result_table(self) -> None:
         """
         Parses status code record from the internal app database for the current self.url.
@@ -306,34 +358,43 @@ class UrlChecker:
         self.check_result_table += message
         # Populate Head Request Output Report
         output_tuple = (self.status_record[1], self.url, self.status_record[2], self.status_record[3])
-        if self.sending_head_request:
-            self.head_request_output_report = list(self.head_request_output_report)
-            self.head_request_output_report.append(output_tuple)
-            # self.c.print(
-            #     f"HEAD OutReport Type: {type(self.head_request_output_report)}\n{self.head_request_output_report}")
-            # self.head_request_output_report = tuple(self.head_request_output_report)
-        if self.sending_get_request:
-            self.get_request_output_report = list(self.get_request_output_report)
-            self.get_request_output_report.append(output_tuple)
-            # self.c.print(
-            #     f"GET OutReport Type: {type(self.get_request_output_report)}\n{self.get_request_output_report}")
-            # self.get_request_output_report = tuple(self.get_request_output_report)
+        # Select appropriate Output Records
+        self._set_output_report(output_tuple)
 
-    def send_requests(self):
+    def _select_output_report(self) -> list | tuple:
+        """
+        Set the 'report' value to a different Output Record based on request type (HEAD, GET, Validate)
+        :return: Output Report: 'validation_output_report', 'head_request_output_report',or 'get_request_output_report'.
+        """
         if self.sending_head_request:
             report = self.head_request_output_report
         elif self.sending_get_request:
             report = self.get_request_output_report
         else:
             report = self.validation_output_report
+        return report
+
+    def _select_type_and_send_request(self, record, requests_left, total_requests) -> None:
+        """
+
+        :param record:
+        :param requests_left:
+        :param total_requests:
+        :return:
+        """
+        if self.sending_head_request:
+            self.send_head_requests(record, requests_left, total_requests)
+        if self.sending_get_request:
+            self.send_get_requests(record, requests_left, total_requests)
+
+    def send_requests(self):
+        # Set the 'report' value to a different Output Record based on request type (HEAD, GET, Validate)
+        report = self._select_output_report()
         total_requests = len(report)
         requests_left = total_requests
         # Send a request for each URL
         for record in report:
-            if self.sending_head_request:
-                self.send_head_requests(record, requests_left, total_requests)
-            if self.sending_get_request:
-                self.send_get_requests(record, requests_left, total_requests)
+            self._select_type_and_send_request(record, requests_left, total_requests)
             requests_left -= 1
             # Get HTTP status URL record and update self.check_result_table
             self.update_check_result_table()
@@ -409,7 +470,7 @@ class UrlChecker:
     help='Pass a list of URLs to check.',
     # default=json.dumps([]),
     # default=json.dumps(urls_to_check),
-    default=json.dumps(urls_to_check),
+    default=json.dumps(urls_to_check_tuple),
     required=False,
     type=json.loads
 )
@@ -450,7 +511,6 @@ def main(urls, url_list, outfile, validate_url, send_get_requests):
             Console().print(f"URL check GET FAILED: {e}.")
             sys.exit(1)
     else:
-        # uc.send_head_request()
         try:
             uc.send_head_request()
         except TypeError as e:
